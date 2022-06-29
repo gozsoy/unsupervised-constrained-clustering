@@ -1,8 +1,0 @@
-Epochs= 100, num_constrains= 6000, ml= 0, alpha= 10000, batch_size= 128, learning_rate= 0.001000, q= 0.000000, pretrain_e= 10, gen_old=  0, decay_rate= 0.900000, epochs_lr= 20, name= 20220615-105128_4e29a. Pretrain accuracy: 0.749700 , Accuracy train: 0.953617, NMI: 0.885813, ARI: 0.900631, sc: 0.998394.
-Accuracy test: 0.954000, NMI: 0.889338, ARI: 0.901641.
-Epochs= 500, num_constrains= 6000, ml= 0, alpha= 10000, batch_size= 128, learning_rate= 0.001000, q= 0.000000, pretrain_e= 10, gen_old=  0, decay_rate= 0.900000, epochs_lr= 20, name= 20220615-115849_a26ce. Pretrain accuracy: 0.749700 , Accuracy train: 0.965050, NMI: 0.913982, ARI: 0.924888, sc: 0.999520.
-Accuracy test: 0.961400, NMI: 0.906270, ARI: 0.917250.
-Epochs= 2, num_constrains= 6000, ml= 0, alpha= 10000, batch_size= 128, learning_rate= 0.001000, q= 0.000000, pretrain_e= 10, gen_old=  0, decay_rate= 0.900000, epochs_lr= 20, name= 20220615-144255_b1369. Pretrain accuracy: 0.749700 , Accuracy train: 0.811367, NMI: 0.737001, ARI: 0.694884, sc: 0.954728.
-Accuracy test: 0.813400, NMI: 0.748833, ARI: 0.702994.
-Epochs= 2, num_constrains= 6000, ml= 0, alpha= 10000, batch_size= 128, learning_rate= 0.001000, q= 0.000000, pretrain_e= 10, gen_old=  0, decay_rate= 0.900000, epochs_lr= 20, name= 20220615-222917_48054. Pretrain accuracy: 0.749700 , Accuracy train: 0.800383, NMI: 0.720880, ARI: 0.685159, sc: 0.949493.
-Accuracy test: 0.801200, NMI: 0.728654, ARI: 0.689831.
