@@ -19,13 +19,9 @@ from sklearn.metrics.cluster import adjusted_rand_score
 from ast import literal_eval as make_tuple
 
 import utils
-from dataset import DataGenerator
+from dataset import ContrastiveDataGenerator, DataGenerator, MixedDataGenerator
 from projector_plugin import ProjectorPlugin
 
-import torchvision
-import torch.nn as nn
-from torch.utils.data import TensorDataset, DataLoader, Dataset
-import torch
 
 
 
@@ -163,6 +159,7 @@ def run_experiment(cfg):
     
     performance_logger = utils.get_logger(experiment_path, ex_name)
 
+    print(f'cfg: {cfg}')
     performance_logger.info(f'cfg: {cfg}')
     performance_logger.info(f'num GPUs: {len(tf.config.list_physical_devices("GPU"))}')
 
@@ -173,8 +170,11 @@ def run_experiment(cfg):
 
     feature_extractor = utils.get_feature_extractor(inp_shape)
 
-    generator = DataGenerator(x_train, y_train, num_constrains=cfg['training']['num_constrains'], alpha=alpha, q=cfg['training']['q'],
+    generator = MixedDataGenerator(x_train, y_train, num_constrains=cfg['training']['num_constrains'], alpha=alpha, q=cfg['training']['q'],
                         batch_size=cfg['training']['batch_size'], ml=cfg['training']['ml'], feature_extractor=feature_extractor)
+    '''generator = ContrastiveDataGenerator(x_train, y_train, alpha=alpha,
+                                         batch_size=cfg['training']['batch_size'], 
+                                         feature_extractor=feature_extractor)'''
     train_generator = generator.gen()
 
     test_generator = DataGenerator(x_test, y_test, batch_size=cfg['training']['batch_size'], feature_extractor=feature_extractor).gen()
@@ -208,7 +208,10 @@ def run_experiment(cfg):
     model.compile(optimizer, loss={"output_1": utils.get_loss_fn(cfg, feat_size)}, metrics={"output_4": utils.accuracy_metric})
 
     model.fit(train_generator, validation_data=test_generator, steps_per_epoch=int(len(y_train)/cfg['training']['batch_size']), 
-              validation_steps=len(y_test)//cfg['training']['batch_size'], epochs=cfg['training']['epochs'], callbacks=callback_list)
+              validation_steps=len(y_test)//cfg['training']['batch_size'], epochs=cfg['training']['epochs'], callbacks=callback_list, verbose=2)
+    # TODO: NO VALIDATION RIGHT NOW
+    '''model.fit(train_generator, steps_per_epoch=int(len(y_train)/cfg['training']['batch_size']), 
+             epochs=cfg['training']['epochs'], callbacks=callback_list, verbose=2)'''
 
 
     # measure training performance
@@ -224,7 +227,7 @@ def run_experiment(cfg):
     acc = utils.cluster_acc(y_train, yy)
     nmi = normalized_mutual_info_score(y_train, yy)
     ari = adjusted_rand_score(y_train, yy)
-    ml_ind1 = generator.ml_ind1
+    '''ml_ind1 = generator.ml_ind1
     ml_ind2 = generator.ml_ind2
     cl_ind1 = generator.cl_ind1
     cl_ind2 = generator.cl_ind2
@@ -239,9 +242,10 @@ def run_experiment(cfg):
         for i in range(len(cl_ind1)):
             if yy[cl_ind1[i]] != yy[cl_ind2[i]]:
                 count += 1
-        sc = count / maxx
+        sc = count / maxx'''
 
-    performance_logger.info("Train Accuracy: %f, NMI: %f, ARI: %f, sc: %f." % (acc, nmi, ari, sc))
+    '''performance_logger.info("Train Accuracy: %f, NMI: %f, ARI: %f, sc: %f." % (acc, nmi, ari, sc))'''
+    performance_logger.info("Train Accuracy: %f, NMI: %f, ARI: %f" % (acc, nmi, ari))
 
 
     # measure test performance

@@ -204,6 +204,7 @@ class DCGMM(tf.keras.Model):
         self.inp_shape = inp_shape
         self.activation = cfg['activation']
         self.type = cfg['type']
+        self.is_unsupervised = cfg['is_unsupervised']
 
         if self.type == "FC":
             self.encoder = Encoder(self.encoded_size)
@@ -252,6 +253,7 @@ class DCGMM(tf.keras.Model):
 
         loss_1a = tf.math.log(c_sigma + tf.keras.backend.epsilon())
 
+        
         loss_1b = tf.math.exp(log_z_sigma_tile) / (c_sigma + tf.keras.backend.epsilon())
 
         loss_1c = tf.math.square(z_mu_tile - self.c_mu) / (c_sigma + tf.keras.backend.epsilon())
@@ -285,8 +287,9 @@ class DCGMM(tf.keras.Model):
             sum_j = tf.sparse.reduce_sum(mul, axis=-2)
             loss_2a_constrain = - tf.math.reduce_sum(tf.multiply(p_c_z, sum_j), axis=-1)
 
-            self.add_loss(tf.math.reduce_mean(loss_2a_constrain))
-            self.add_metric(loss_2a_constrain, name='loss_2a_c', aggregation="mean")
+            if not self.is_unsupervised:
+                self.add_loss(tf.math.reduce_mean(loss_2a_constrain))
+                self.add_metric(loss_2a_constrain, name='loss_2a_c', aggregation="mean")
 
         loss_2b = tf.math.reduce_sum(tf.math.xlogy(p_c_z, p_c_z), axis=-1)
 
