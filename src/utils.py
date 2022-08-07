@@ -29,6 +29,15 @@ import torch.nn as nn
 from torch.utils.data import TensorDataset, DataLoader, Dataset
 import torch
 
+
+def set_seeds(cfg):
+    seed = cfg["experiment"]["seed"]
+    np.random.seed(seed)
+    random.seed(seed)
+    tf.random.set_seed(seed)
+    
+    return
+
 def load_config(args):
 
     with open(args.config, "r") as f:

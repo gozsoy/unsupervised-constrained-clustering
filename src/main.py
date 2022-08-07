@@ -19,7 +19,7 @@ from sklearn.metrics.cluster import adjusted_rand_score
 from ast import literal_eval as make_tuple
 
 import utils
-from dataset import ContrastiveDataGenerator, DataGenerator, MixedDataGenerator
+from dataset import ContrastiveDataGenerator, DataGenerator, MixedDataGenerator, UnsupervisedMixedDataGenerator
 from projector_plugin import ProjectorPlugin
 
 
@@ -170,7 +170,7 @@ def run_experiment(cfg):
 
     feature_extractor = utils.get_feature_extractor(inp_shape)
 
-    generator = MixedDataGenerator(x_train, y_train, num_constrains=cfg['training']['num_constrains'], alpha=alpha, q=cfg['training']['q'],
+    generator = UnsupervisedMixedDataGenerator(x_train, y_train, num_constrains=cfg['training']['num_constrains'], alpha=alpha, q=cfg['training']['q'],
                         batch_size=cfg['training']['batch_size'], ml=cfg['training']['ml'], feature_extractor=feature_extractor)
     '''generator = ContrastiveDataGenerator(x_train, y_train, alpha=alpha,
                                          batch_size=cfg['training']['batch_size'], 
@@ -289,5 +289,7 @@ if __name__ == '__main__':
     _args = parser.parse_args()
 
     cfg = utils.load_config(_args)
+
+    utils.set_seeds(cfg)
 
     run_experiment(cfg)
