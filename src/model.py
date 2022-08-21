@@ -3,6 +3,7 @@ import tensorflow_probability as tfp
 import numpy as np
 import os
 from ast import literal_eval as make_tuple
+import math
 
 
 tfd = tfp.distributions
@@ -76,6 +77,8 @@ class VGGDecoder(layers.Layer):
             target_shape = (13, 13, 64)
         elif input_tuple == (32, 32, 3):
             target_shape = (5, 5, 64)
+        elif input_tuple == (96, 96, 3): # compatible with stl10
+            target_shape = (21, 21, 64)
 
         self.activation = activation
         self.dense = tfkl.Dense(target_shape[0] * target_shape[1] * target_shape[2])
@@ -226,7 +229,7 @@ class DCGMM(tf.keras.Model):
     def call(self, inputs, training=True):
         inputs, W = inputs
         z_mu, log_z_sigma = self.encoder(inputs)
-        z = tfd.MultivariateNormalDiag(loc=z_mu, scale_diag=tf.math.sqrt(tf.math.exp(log_z_sigma)))
+        z = tfd.MultivariateNormalDiag(loc=z_mu, scale_diag=tf.math.sqrt(tf.math.exp(log_z_sigma + tf.keras.backend.epsilon() )))
         z_sample = z.sample()
 
         log_z_sigma_tile = tf.expand_dims(log_z_sigma, axis=-2)
@@ -294,6 +297,7 @@ class DCGMM(tf.keras.Model):
         loss_2b = tf.math.reduce_sum(tf.math.xlogy(p_c_z, p_c_z), axis=-1)
 
         loss_3 = - 1 / 2 * tf.reduce_sum(log_z_sigma + 1, axis=-1)
+
 
         self.add_loss(tf.math.reduce_mean(loss_1a))
         self.add_loss(tf.math.reduce_mean(loss_1b))

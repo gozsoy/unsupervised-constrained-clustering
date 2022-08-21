@@ -19,7 +19,7 @@ from sklearn.metrics.cluster import adjusted_rand_score
 from ast import literal_eval as make_tuple
 
 import utils
-from dataset import ContrastiveDataGenerator, DataGenerator, MixedDataGenerator, UnsupervisedMixedDataGenerator
+from dataset import ContrastiveDataGenerator, DataGenerator, MixedDataGenerator, UnsupervisedMixedDataGenerator, UnsupervisedDataGeneratorVGG
 from projector_plugin import ProjectorPlugin
 
 
@@ -41,6 +41,8 @@ def pretrain(cfg, model, performance_logger, feature_extractor, x_train, x_test,
     X = tf.concat(total_output,axis=0)
     print('extraction finished')
     inp_shape = X.shape[1]
+    
+    #inp_shape = (96,96,3) use with vgg
 
     # Get the AE from DCGMM
     input = tfkl.Input(shape=inp_shape)
@@ -166,11 +168,12 @@ def run_experiment(cfg):
     alpha = utils.get_alpha(cfg)
 
     x_train, x_test, y_train, y_test = utils.get_data(cfg)
-    inp_shape = x_train.shape[1:]
 
+    # below 2 rows only valid when doing pre-feature extraction with resnet50
+    inp_shape = x_train.shape[1:]
     feature_extractor = utils.get_feature_extractor(inp_shape)
 
-    generator = UnsupervisedMixedDataGenerator(x_train, y_train, num_constrains=cfg['training']['num_constrains'], alpha=alpha, q=cfg['training']['q'],
+    generator = DataGenerator(x_train, y_train, num_constrains=cfg['training']['num_constrains'], alpha=alpha, q=cfg['training']['q'],
                         batch_size=cfg['training']['batch_size'], ml=cfg['training']['ml'], feature_extractor=feature_extractor)
     '''generator = ContrastiveDataGenerator(x_train, y_train, alpha=alpha,
                                          batch_size=cfg['training']['batch_size'], 
@@ -182,7 +185,7 @@ def run_experiment(cfg):
     
     #feat_size = feature_extractor(x_train[:1]).shape[1]
     #feat_size = inp_shape[0]
-    feat_size = 2048
+    feat_size = 2048 #(96,96,3) or 2048  # both are only valid for stl-10
     model = utils.get_model(cfg, feat_size)  # only works with "FC" 
 
     optimizer = tf.keras.optimizers.Adam(learning_rate=cfg['training']['learning_rate'], 
@@ -215,18 +218,21 @@ def run_experiment(cfg):
 
 
     # measure training performance
+    # commented section is when using resnet for feature extraction
     dataloader = tf.data.Dataset.from_tensor_slices(x_train).batch(128)
     total_output = []
     for batch in dataloader:
         output = feature_extractor(batch, training=False)
         total_output.append(output)
     x_train_extracted = tf.concat(total_output,axis=0)
-
     rec, z_sample, p_z_c, p_c_z = model.predict([x_train_extracted, np.zeros(len(x_train_extracted))])
+
+    #rec, z_sample, p_z_c, p_c_z = model.predict([x_train, np.zeros(len(x_train))])
     yy = np.argmax(p_c_z, axis=-1)
     acc = utils.cluster_acc(y_train, yy)
     nmi = normalized_mutual_info_score(y_train, yy)
     ari = adjusted_rand_score(y_train, yy)
+    # sc metric computation
     '''ml_ind1 = generator.ml_ind1
     ml_ind2 = generator.ml_ind2
     cl_ind1 = generator.cl_ind1
@@ -249,14 +255,16 @@ def run_experiment(cfg):
 
 
     # measure test performance
+    # commented section is when using resnet for feature extraction
     dataloader = tf.data.Dataset.from_tensor_slices(x_test).batch(128)
     total_output = []
     for batch in dataloader:
         output = feature_extractor(batch, training=False)
         total_output.append(output)
     x_test_extracted = tf.concat(total_output,axis=0)
-
     rec, z_sample, p_z_c, p_c_z = model.predict([x_test_extracted, np.zeros(len(x_test_extracted))])
+    
+    #rec, z_sample, p_z_c, p_c_z = model.predict([x_test, np.zeros(len(x_test))])
     yy = np.argmax(p_c_z, axis=-1)
     acc = utils.cluster_acc(y_test, yy)
     nmi = normalized_mutual_info_score(y_test, yy)
@@ -274,9 +282,11 @@ def run_experiment(cfg):
 
         proj.save_labels(y_test)
 
-        # Add images to projector
+        # Add images to projector (INSTEAD OF X_TEST IT SHOULD BE REC)
         if cfg['dataset']['name'] == 'MNIST':
             proj.save_image_sprites(x_test, 28, 28, 1, True)
+        elif cfg['dataset']['name'] == 'STL10':
+            proj.save_image_sprites(x_test, 96, 96, 3, True)
 
         proj.finalize()
 

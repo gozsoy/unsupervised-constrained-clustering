@@ -136,7 +136,7 @@ def get_data(cfg, stl_pretrained=False):
 
         x_train = np.reshape(x_train,(-1,3,96,96))
         x_train = np.transpose(x_train,(0,1,3,2))
-        x_train = np.transpose(x_train,(0,2,3,1))
+        x_train = np.transpose(x_train,(0,2,3,1)).astype('float32') # added astype newly
         
         '''x_train = x_train.astype('float32')/255
         x_train[:,0,:,:] = (x_train[:,0,:,:] - 0.485)/0.229
@@ -145,7 +145,7 @@ def get_data(cfg, stl_pretrained=False):
 
         x_test = np.reshape(x_test,(-1,3,96,96))
         x_test = np.transpose(x_test,(0,1,3,2))
-        x_test = np.transpose(x_test,(0,2,3,1))
+        x_test = np.transpose(x_test,(0,2,3,1)).astype('float32') # added astype newly
         
         '''x_test = x_test.astype('float32')/255
         x_test[:,0,:,:] = (x_test[:,0,:,:] - 0.485)/0.229
@@ -158,6 +158,7 @@ def get_data(cfg, stl_pretrained=False):
     else:
         raise NotImplementedError()
 
+    
     return x_train, x_test, y_train, y_test
 
 
