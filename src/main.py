@@ -19,20 +19,24 @@ from sklearn.metrics.cluster import adjusted_rand_score
 from ast import literal_eval as make_tuple
 
 import utils
-from dataset import ContrastiveDataGenerator, DataGenerator, MixedDataGenerator, UnsupervisedMixedDataGenerator, UnsupervisedDataGeneratorVGG
+from dataset import ContrastiveDataGenerator, DataGenerator, MixedDataGenerator, UnsupervisedMixedDataGenerator, UnsupervisedDataGeneratorResNet
 from projector_plugin import ProjectorPlugin
 
+# for visualizing latent space
+from sklearn.decomposition import PCA
+import matplotlib.pyplot as plt
 
 
-
-def pretrain(cfg, model, performance_logger, feature_extractor, x_train, x_test, y_train, y_test):
+def pretrain(cfg, model, performance_logger, feature_extractor, x_train, x_test, y_train, y_test, experiment_path):
 
     #x_train, x_test, y_train, y_test = utils.get_data(cfg, stl_pretrained=False)
 
     X = np.concatenate((x_train, x_test))
     Y = np.concatenate((y_train, y_test))
 
-    print('extracting image features')
+
+    # below not used for resnet vae
+    '''print('extracting image features')
     dataloader = tf.data.Dataset.from_tensor_slices(X).batch(128)
     total_output = []
     for batch in dataloader:
@@ -40,9 +44,10 @@ def pretrain(cfg, model, performance_logger, feature_extractor, x_train, x_test,
         total_output.append(output)
     X = tf.concat(total_output,axis=0)
     print('extraction finished')
-    inp_shape = X.shape[1]
+    inp_shape = X.shape[1]'''
     
-    #inp_shape = (96,96,3) use with vgg
+    inp_shape = (96,96,3) # stl10
+    #inp_shape = (32,32,3) # cifar10
 
     # Get the AE from DCGMM
     input = tfkl.Input(shape=inp_shape)
@@ -58,7 +63,20 @@ def pretrain(cfg, model, performance_logger, feature_extractor, x_train, x_test,
         d3 = model.decoder.dense3(d2)
         dec = model.decoder.dense4(d3)
     elif cfg['model']['type'] == "CNN":
-        e1 = model.encoder.conv1(input)
+        # my extension - not in use
+        out = model.encoder.conv1(input)
+        out = model.encoder.bn1(out)
+        out = model.encoder.conv2(out)
+        out = model.encoder.conv3(out)
+        out = model.encoder.bn2(out)
+
+        out = model.decoder.up1(out)
+        out = model.decoder.conv1(out)
+        out = model.decoder.bn1(out)
+        dec = model.decoder.conv2(out)
+        
+        # original
+        '''e1 = model.encoder.conv1(input)
         e2 = model.encoder.conv2(e1)
         f = tfkl.Flatten()(e2)
         z = model.encoder.mu(f)
@@ -66,7 +84,7 @@ def pretrain(cfg, model, performance_logger, feature_extractor, x_train, x_test,
         d2 = model.decoder.reshape(d1)
         d3 = model.decoder.convT1(d2)
         d4 = model.decoder.convT2(d3)
-        dec = model.decoder.convT3(d4)
+        dec = model.decoder.convT3(d4)'''
         if cfg['model']['activation']=='sigmoid':
             dec = tf.sigmoid(dec)
 
@@ -82,18 +100,25 @@ def pretrain(cfg, model, performance_logger, feature_extractor, x_train, x_test,
         for block in model.decoder.layers:
             dec = block(dec)
         dec = model.decoder.convT(dec)
+        #dec = model.decoder.convT2(dec)
 
         if cfg['model']['activation']=='sigmoid':
             dec = tf.sigmoid(dec)
 
+    elif cfg['model']['type'] == "ResNet":
+        z_mu, _ = model.encoder(input)
+        dec = model.decoder(z_mu)
+    
+    elif cfg['model']['type'] == "ResNetAE":
+        dec = model.single_model(input)
+
     autoencoder = tfk.Model(inputs=input, outputs=dec)
 
     optimizer = tf.keras.optimizers.Adam(learning_rate=cfg['experiment']['lr_pretrain'])
-    if cfg['dataset']['name'] == 'MNIST':
+    if cfg['dataset']['name'] == 'MNIST' or cfg['dataset']['name'] == 'CIFAR10' or cfg['dataset']['name'] == 'STL10':
         autoencoder.compile(optimizer=optimizer, loss="binary_crossentropy")
-    else:
+    else: #elif cfg['dataset']['name'] == 'STL10': # use if pretrained resnet
         autoencoder.compile(optimizer=optimizer, loss="mse")
-    
 
     pretrain_path = os.path.join(cfg['dir']['pretrain'],cfg['dataset']['name'],'autoencoder','cp.ckpt')
     gmm_save_path = os.path.join(cfg['dir']['pretrain'],cfg['dataset']['name'],'gmm_save.sav')
@@ -105,7 +130,7 @@ def pretrain(cfg, model, performance_logger, feature_extractor, x_train, x_test,
 
         cp_callback = tf.keras.callbacks.ModelCheckpoint(filepath=pretrain_path,
                                                          save_weights_only=True, verbose=1)
-        autoencoder.fit(X, X, epochs=cfg['experiment']['epochs_pretrain'], batch_size=128, callbacks=cp_callback)
+        autoencoder.fit(X, X, epochs=cfg['experiment']['epochs_pretrain'], batch_size=64, callbacks=cp_callback)
 
         encoder = model.encoder
         input = tfkl.Input(shape=inp_shape)
@@ -116,6 +141,19 @@ def pretrain(cfg, model, performance_logger, feature_extractor, x_train, x_test,
         estimator = GaussianMixture(n_components=cfg['model']['num_clusters'], covariance_type='diag', n_init=3)
         estimator.fit(z)
         pickle.dump(estimator, open(gmm_save_path, 'wb'))
+
+        # visualize embeddings TRY TSNE AS WELL
+        pca = PCA(n_components=2)
+        z_transformed = pca.fit_transform(z)
+        labels_transformed = np.squeeze(Y)
+        label2class ={'airplane':0, 'automobile':1, 'bird':2, 'cat':3, 'deer':4, 'dog':5, 
+                      'frog':6, 'horse':7, 'ship':8, 'truck':9}
+        plt.figure(figsize=(10,10))
+        scatter = plt.scatter(z_transformed[:,0], z_transformed[:,1], c=labels_transformed, cmap='tab10')
+        plt.legend(handles=scatter.legend_elements()[0], labels=label2class)
+        plt_save_path = os.path.join(experiment_path,'embedding_space.png')
+        plt.savefig(plt_save_path)
+
 
         performance_logger.info('finished pretraining')
         print('finished pretraining')
@@ -143,6 +181,22 @@ def pretrain(cfg, model, performance_logger, feature_extractor, x_train, x_test,
     pretrain_acc = utils.cluster_acc(yy, Y)
     performance_logger.info(f'pretrain accuracy: {pretrain_acc}')
     print(f'pretrain accuracy: {pretrain_acc}')
+    performance_logger.info(f'yy: {yy}')
+    performance_logger.info(f'Y: {Y}')
+    
+    
+    # visualize for e.g. X[:100]
+    '''temp_X = X[:100]
+
+    proj = ProjectorPlugin(experiment_path)
+
+    rec = autoencoder.predict(temp_X)
+
+    # convert bgr to rgb
+    rec = rec[...,::-1]
+
+    proj.save_image_sprites(rec, 96, 96, 3, False)'''
+
 
     return model
 
@@ -171,7 +225,7 @@ def run_experiment(cfg):
 
     # below 2 rows only valid when doing pre-feature extraction with resnet50
     inp_shape = x_train.shape[1:]
-    feature_extractor = utils.get_feature_extractor(inp_shape)
+    feature_extractor = utils.get_feature_extractor(inp_shape) # WILL NOT BE USED FOR RESNET VAE
 
     generator = DataGenerator(x_train, y_train, num_constrains=cfg['training']['num_constrains'], alpha=alpha, q=cfg['training']['q'],
                         batch_size=cfg['training']['batch_size'], ml=cfg['training']['ml'], feature_extractor=feature_extractor)
@@ -184,8 +238,8 @@ def run_experiment(cfg):
 
     
     #feat_size = feature_extractor(x_train[:1]).shape[1]
-    #feat_size = inp_shape[0]
-    feat_size = 2048 #(96,96,3) or 2048  # both are only valid for stl-10
+    #feat_size = (32,32,3)
+    feat_size = (96,96,3) #(96,96,3) or 2048  # both are only valid for stl-10
     model = utils.get_model(cfg, feat_size)  # only works with "FC" 
 
     optimizer = tf.keras.optimizers.Adam(learning_rate=cfg['training']['learning_rate'], 
@@ -205,10 +259,11 @@ def run_experiment(cfg):
                                                               save_weights_only=True, period=100))
 
     # pretrain model
-    model = pretrain(cfg, model, performance_logger, feature_extractor, x_train, x_test, y_train, y_test)
+    #model = pretrain(cfg, model, performance_logger, feature_extractor, x_train, x_test, y_train, y_test, experiment_path)
     
     # train model
-    model.compile(optimizer, loss={"output_1": utils.get_loss_fn(cfg, feat_size)}, metrics={"output_4": utils.accuracy_metric})
+    #model.compile(optimizer, loss={"output_1": utils.get_loss_fn(cfg, feat_size)}, metrics={"output_4": utils.accuracy_metric})#, run_eagerly=True)
+    model.compile(optimizer, loss={"output_1": utils.get_loss_fn(cfg, feat_size)}, run_eagerly=True)
 
     model.fit(train_generator, validation_data=test_generator, steps_per_epoch=int(len(y_train)/cfg['training']['batch_size']), 
               validation_steps=len(y_test)//cfg['training']['batch_size'], epochs=cfg['training']['epochs'], callbacks=callback_list, verbose=2)
@@ -219,15 +274,15 @@ def run_experiment(cfg):
 
     # measure training performance
     # commented section is when using resnet for feature extraction
-    dataloader = tf.data.Dataset.from_tensor_slices(x_train).batch(128)
+    '''dataloader = tf.data.Dataset.from_tensor_slices(x_train).batch(128)
     total_output = []
     for batch in dataloader:
         output = feature_extractor(batch, training=False)
         total_output.append(output)
     x_train_extracted = tf.concat(total_output,axis=0)
-    rec, z_sample, p_z_c, p_c_z = model.predict([x_train_extracted, np.zeros(len(x_train_extracted))])
+    rec, z_sample, p_z_c, p_c_z = model.predict([x_train_extracted, np.zeros(len(x_train_extracted))])'''
 
-    #rec, z_sample, p_z_c, p_c_z = model.predict([x_train, np.zeros(len(x_train))])
+    rec, z_sample, p_z_c, p_c_z = model.predict([x_train, np.zeros(len(x_train))])
     yy = np.argmax(p_c_z, axis=-1)
     acc = utils.cluster_acc(y_train, yy)
     nmi = normalized_mutual_info_score(y_train, yy)
@@ -256,15 +311,15 @@ def run_experiment(cfg):
 
     # measure test performance
     # commented section is when using resnet for feature extraction
-    dataloader = tf.data.Dataset.from_tensor_slices(x_test).batch(128)
+    '''dataloader = tf.data.Dataset.from_tensor_slices(x_test).batch(128)
     total_output = []
     for batch in dataloader:
         output = feature_extractor(batch, training=False)
         total_output.append(output)
     x_test_extracted = tf.concat(total_output,axis=0)
-    rec, z_sample, p_z_c, p_c_z = model.predict([x_test_extracted, np.zeros(len(x_test_extracted))])
+    rec, z_sample, p_z_c, p_c_z = model.predict([x_test_extracted, np.zeros(len(x_test_extracted))])'''
     
-    #rec, z_sample, p_z_c, p_c_z = model.predict([x_test, np.zeros(len(x_test))])
+    rec, z_sample, p_z_c, p_c_z = model.predict([x_test, np.zeros(len(x_test))])
     yy = np.argmax(p_c_z, axis=-1)
     acc = utils.cluster_acc(y_test, yy)
     nmi = normalized_mutual_info_score(y_test, yy)
@@ -286,7 +341,7 @@ def run_experiment(cfg):
         if cfg['dataset']['name'] == 'MNIST':
             proj.save_image_sprites(x_test, 28, 28, 1, True)
         elif cfg['dataset']['name'] == 'STL10':
-            proj.save_image_sprites(x_test, 96, 96, 3, True)
+            proj.save_image_sprites(rec, 96, 96, 3, True)
 
         proj.finalize()
 

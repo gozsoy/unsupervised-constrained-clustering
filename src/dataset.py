@@ -5,6 +5,8 @@ from scipy.sparse import csr_matrix
 import scipy.sparse
 import itertools
 
+from transformation import preprocess_for_train
+
 
 def csr_matrix_indices(S):
     """
@@ -231,13 +233,13 @@ class DataGenerator():
             for index in range(int(len(self.X)/ self.batch_size)):
                 indexes = self.indexes[index * self.batch_size:(index + 1) * self.batch_size]
                 X = tf.gather(self.X,indexes)
-                X = self.extract_image_features(X) # added for stl10
+                #X = self.extract_image_features(X) # added for stl10
                 Y = self.Y[indexes]
                 W = self.W[indexes][:, indexes]* self.alpha
                 ind1, ind2 = csr_matrix_indices(W)
                 data = W.data
                 
-                yield (X, (ind1, ind2, data)), {"output_1": X, "output_4": Y}
+                yield (X, (ind1, ind2, data)), {"output_1": X}#, "output_4": Y}
             for index in range(self.num_constrains// self.batch_size):
                 indexes = self.ind_constr[index * self.batch_size//2:(index + 1) * self.batch_size//2]
                 indexes = np.concatenate([self.ind1[indexes], self.ind2[indexes]])
@@ -245,13 +247,13 @@ class DataGenerator():
 
                 np.random.shuffle(indexes)
                 X = tf.gather(self.X,indexes)
-                X = self.extract_image_features(X) # added for stl10
+                #X = self.extract_image_features(X) # added for stl10
                 Y = self.Y[indexes]
                 W = self.W[indexes][:, indexes]* self.alpha
                 ind1, ind2 = csr_matrix_indices(W)
                 data = W.data
                 #W = W.toarray()
-                yield (X, (ind1,ind2, data)), {"output_1": X, "output_4": Y}
+                yield (X, (ind1,ind2, data)), {"output_1": X}#, "output_4": Y}
 
 
 class ContrastiveDataGenerator():
@@ -943,7 +945,7 @@ class UnsupervisedMixedDataGenerator():
 
 
 
-class UnsupervisedDataGeneratorVGG():
+class UnsupervisedDataGeneratorResNet():
     'random cannot links, must links from augmentations'
 
     def __init__(self, X, Y, alpha=1000, batch_size=100, num_constrains=0, q=0, ml=0, shuffle=True, l=0, feature_extractor=None):
@@ -1155,11 +1157,14 @@ class UnsupervisedDataGeneratorVGG():
                 Y = self.Y[indexes]
 
                 # you should delete below rows as well and return [],[],[]
-                W = self.W[indexes][:, indexes]* self.alpha
+                '''W = self.W[indexes][:, indexes]* self.alpha
                 ind1, ind2 = csr_matrix_indices(W)
-                data = W.data
+                data = W.data'''
+                ind1 = np.array([],dtype=np.int32)
+                ind2 = np.array([],dtype=np.int32)
+                data = np.array([],dtype=np.float64)
                 
-                yield (X, (ind1, ind2, data)), {"output_1": X, "output_4": Y}
+                yield (X, (ind1, ind2, data)), {"output_1": X}#, "output_4": Y}
 
             for index in range(self.num_constrains// self.batch_size):
                 indexes = self.ind_constr[index * self.batch_size//2:(index + 1) * self.batch_size//2]
@@ -1205,4 +1210,33 @@ class UnsupervisedDataGeneratorVGG():
                 ind2 = np.append(ind2, np.arange(self.batch_size, self.batch_size + ml_link_per_batch))
                 data = np.append(data, np.array([self.alpha] * ml_link_per_batch))
 
-                yield (X, (ind1,ind2, data)), {"output_1": X, "output_4": Y}
+                yield (X, (ind1,ind2, data)), {"output_1": X}#, "output_4": Y}
+
+
+
+class ContrastiveDataGeneratorPretraining():
+    'Generates data within contrastive learning schema for DC-GMM'
+
+    def __init__(self, X, batch_size=64):
+        'Initialization'
+        self.batch_size = batch_size
+        self.X = X
+        self.indexes = np.arange(len(self.X))
+
+    def __len__(self):
+        'Denotes the number of batches per epoch'
+        return int(np.floor(len(self.X) / self.batch_size))
+    
+    def gen(self):
+        while True:
+            np.random.shuffle(self.indexes)
+            for index in range(int(len(self.X)/ self.batch_size)):
+                indexes = self.indexes[index * self.batch_size:(index + 1) * self.batch_size]
+
+                X = tf.gather(self.X,indexes)
+                X = tf.concat((X, X),axis=0)  # (N,96,96,3) -> (2N,96,96,3)
+
+                X = tf.map_fn(preprocess_for_train,tf.cast(X,dtype=tf.float32))
+                
+                # format only suitable for pretraining
+                yield X, {"output_1": X}

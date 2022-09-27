@@ -11,7 +11,7 @@ class ProjectorPlugin:
     METADATA_FILE = "metadata.tsv"
     EMBEDDING_TENSOR_NAME = "embedding"
 
-    def __init__(self, log_dir_fq_path, x, step=0):
+    def __init__(self, log_dir_fq_path, x=0, step=0): # original x, modified x = 0
         self.log_dir_fq_path = log_dir_fq_path
         self.config = projector.ProjectorConfig()
         self.embedding = self.config.embeddings.add()

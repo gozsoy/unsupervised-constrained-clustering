@@ -58,14 +58,24 @@ def get_loss_fn(cfg, inp_shape):
         
         return loss_fn
     
-    elif cfg['dataset']['name']== 'CIFAR10' or cfg['dataset']['name']== 'STL10':
+    elif cfg['dataset']['name']== 'CIFAR10':
 
-        #pixel_count = tf.cast(tf.reduce_prod(inp_shape), dtype=tf.float32)
-        pixel_count = inp_shape
+        pixel_count = tf.cast(tf.reduce_prod(inp_shape), dtype=tf.float32)
+        #pixel_count = inp_shape only valid for pretrained resnet
 
         def loss_fn(y_true, x_decoded_mean):
             
-            loss = pixel_count * MeanSquaredError()(y_true, x_decoded_mean)
+            loss = 0.0 * pixel_count * BinaryCrossentropy()(y_true, x_decoded_mean)
+            return loss
+        
+        return loss_fn
+    
+    elif cfg['dataset']['name'] == 'STL10':
+        
+        pixel_count = tf.cast(tf.reduce_prod(inp_shape), dtype=tf.float32)
+
+        def loss_fn(y_true, x_decoded_mean):
+            loss = pixel_count * BinaryCrossentropy()(y_true, x_decoded_mean)
             return loss
         
         return loss_fn
@@ -83,30 +93,14 @@ def get_data(cfg, stl_pretrained=False):
         x_test = np.reshape(x_test, (-1, 28 * 28))
 
     elif cfg['dataset']['name'] == 'CIFAR10':
-        #(x_train, y_train), (x_test, y_test) = tf.keras.datasets.cifar10.load_data()
+        (x_train, y_train), (x_test, y_test) = tf.keras.datasets.cifar10.load_data()
 
-        # feature extractor will already handle normalization
-        '''# cifar10 dataset statistics
-        dataset_means = [0.4914, 0.4822, 0.4465]
-        dataset_stds = [0.247, 0.243, 0.261]
+        x_train = x_train.astype('float32')
+        x_test = x_test.astype('float32')
 
         x_train = x_train / 255.
         x_test = x_test / 255.
 
-        # layers.Normalization is not defined in tf 2.2.0
-        for i in range(3):
-            x_train[:,:,:,i] = (x_train[:,:,:,i] - dataset_means[i]) / dataset_stds[i]
-            x_test[:,:,:,i] = (x_test[:,:,:,i] - dataset_means[i]) / dataset_stds[i] 
-
-        '''
-        #y_train = np.squeeze(y_train)
-        #y_test = np.squeeze(y_test)
-
-        X = np.load("../dataset/cifar10/cifar10_features.npy")
-        X = X.astype('float32')
-        y = np.load("../dataset/cifar10/cifar10_label.npy")
-        y = y.astype('int32')
-        x_train, x_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=3)
 
     elif stl_pretrained:
         X = np.load("../dataset/stl10/stl_features.npy")
@@ -137,23 +131,19 @@ def get_data(cfg, stl_pretrained=False):
         x_train = np.reshape(x_train,(-1,3,96,96))
         x_train = np.transpose(x_train,(0,1,3,2))
         x_train = np.transpose(x_train,(0,2,3,1)).astype('float32') # added astype newly
-        
-        '''x_train = x_train.astype('float32')/255
-        x_train[:,0,:,:] = (x_train[:,0,:,:] - 0.485)/0.229
-        x_train[:,1,:,:] = (x_train[:,1,:,:] - 0.456)/0.224
-        x_train[:,2,:,:] = (x_train[:,2,:,:] - 0.406)/0.225'''
+    
 
         x_test = np.reshape(x_test,(-1,3,96,96))
         x_test = np.transpose(x_test,(0,1,3,2))
         x_test = np.transpose(x_test,(0,2,3,1)).astype('float32') # added astype newly
-        
-        '''x_test = x_test.astype('float32')/255
-        x_test[:,0,:,:] = (x_test[:,0,:,:] - 0.485)/0.229
-        x_test[:,1,:,:] = (x_test[:,1,:,:] - 0.456)/0.224
-        x_test[:,2,:,:] = (x_test[:,2,:,:] - 0.406)/0.225'''
+
 
         y_train = y_train - 1
         y_test = y_test - 1
+
+        # [0,255] -> [0,1] ADDED FOR RESNET VAE. comment out for pretrained resnet
+        x_train = x_train / 255.
+        x_test = x_test / 255.
 
     else:
         raise NotImplementedError()
@@ -166,6 +156,7 @@ def get_model(cfg, inp_shape):
     return DCGMM(cfg['model'], inp_shape)
 
 
+# NOT USED FOR RESNET VAE ACTUALLY
 def get_feature_extractor(inp_shape):
 
     inputs = tf.keras.layers.Input(inp_shape, dtype = tf.uint8)
