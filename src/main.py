@@ -46,8 +46,8 @@ def pretrain(cfg, model, performance_logger, feature_extractor, x_train, x_test,
     print('extraction finished')
     inp_shape = X.shape[1]'''
     
-    inp_shape = (96,96,3) # stl10
-    #inp_shape = (32,32,3) # cifar10
+    #inp_shape = (96,96,3) # stl10
+    inp_shape = (32,32,3) # cifar10
 
     # Get the AE from DCGMM
     input = tfkl.Input(shape=inp_shape)
@@ -130,7 +130,7 @@ def pretrain(cfg, model, performance_logger, feature_extractor, x_train, x_test,
 
         cp_callback = tf.keras.callbacks.ModelCheckpoint(filepath=pretrain_path,
                                                          save_weights_only=True, verbose=1)
-        autoencoder.fit(X, X, epochs=cfg['experiment']['epochs_pretrain'], batch_size=64, callbacks=cp_callback)
+        autoencoder.fit(X, X, epochs=cfg['experiment']['epochs_pretrain'], batch_size=256, callbacks=cp_callback, verbose=2)
 
         encoder = model.encoder
         input = tfkl.Input(shape=inp_shape)
@@ -143,7 +143,7 @@ def pretrain(cfg, model, performance_logger, feature_extractor, x_train, x_test,
         pickle.dump(estimator, open(gmm_save_path, 'wb'))
 
         # visualize embeddings TRY TSNE AS WELL
-        pca = PCA(n_components=2)
+        '''pca = PCA(n_components=2)
         z_transformed = pca.fit_transform(z)
         labels_transformed = np.squeeze(Y)
         label2class ={'airplane':0, 'automobile':1, 'bird':2, 'cat':3, 'deer':4, 'dog':5, 
@@ -152,7 +152,7 @@ def pretrain(cfg, model, performance_logger, feature_extractor, x_train, x_test,
         scatter = plt.scatter(z_transformed[:,0], z_transformed[:,1], c=labels_transformed, cmap='tab10')
         plt.legend(handles=scatter.legend_elements()[0], labels=label2class)
         plt_save_path = os.path.join(experiment_path,'embedding_space.png')
-        plt.savefig(plt_save_path)
+        plt.savefig(plt_save_path)'''
 
 
         performance_logger.info('finished pretraining')
@@ -186,7 +186,7 @@ def pretrain(cfg, model, performance_logger, feature_extractor, x_train, x_test,
     
     
     # visualize for e.g. X[:100]
-    '''temp_X = X[:100]
+    temp_X = X[:900]
 
     proj = ProjectorPlugin(experiment_path)
 
@@ -195,7 +195,7 @@ def pretrain(cfg, model, performance_logger, feature_extractor, x_train, x_test,
     # convert bgr to rgb
     rec = rec[...,::-1]
 
-    proj.save_image_sprites(rec, 96, 96, 3, False)'''
+    proj.save_image_sprites(rec, 32, 32, 3, False)
 
 
     return model
@@ -226,28 +226,19 @@ def run_experiment(cfg):
     # below 2 rows only valid when doing pre-feature extraction with resnet50
     inp_shape = x_train.shape[1:]
     feature_extractor = utils.get_feature_extractor(inp_shape) # WILL NOT BE USED FOR RESNET VAE
-
-    generator = DataGenerator(x_train, y_train, num_constrains=cfg['training']['num_constrains'], alpha=alpha, q=cfg['training']['q'],
-                        batch_size=cfg['training']['batch_size'], ml=cfg['training']['ml'], feature_extractor=feature_extractor)
-    '''generator = ContrastiveDataGenerator(x_train, y_train, alpha=alpha,
-                                         batch_size=cfg['training']['batch_size'], 
-                                         feature_extractor=feature_extractor)'''
-    train_generator = generator.gen()
-
-    test_generator = DataGenerator(x_test, y_test, batch_size=cfg['training']['batch_size'], feature_extractor=feature_extractor).gen()
-
     
     #feat_size = feature_extractor(x_train[:1]).shape[1]
-    #feat_size = (32,32,3)
-    feat_size = (96,96,3) #(96,96,3) or 2048  # both are only valid for stl-10
+    feat_size = (32,32,3)
+    #feat_size = (96, 96, 3) #(96,96,3) or 2048  # both are only valid for stl-10
     model = utils.get_model(cfg, feat_size)  # only works with "FC" 
+
 
     optimizer = tf.keras.optimizers.Adam(learning_rate=cfg['training']['learning_rate'], 
                                          beta_1=cfg['training']['beta_1'],
                                          beta_2=cfg['training']['beta_2'])
 
     # handle callbacks
-    callback_list = [tf.keras.callbacks.TensorBoard(log_dir=experiment_path)]
+    callback_list = []
 
     if cfg['training']['lrs']:
         callback_list.append(tf.keras.callbacks.LearningRateScheduler(utils.get_learning_rate_scheduler(cfg)))
@@ -259,17 +250,22 @@ def run_experiment(cfg):
                                                               save_weights_only=True, period=100))
 
     # pretrain model
-    #model = pretrain(cfg, model, performance_logger, feature_extractor, x_train, x_test, y_train, y_test, experiment_path)
+    model = pretrain(cfg, model, performance_logger, feature_extractor, x_train, x_test, y_train, y_test, experiment_path)
     
     # train model
-    #model.compile(optimizer, loss={"output_1": utils.get_loss_fn(cfg, feat_size)}, metrics={"output_4": utils.accuracy_metric})#, run_eagerly=True)
-    model.compile(optimizer, loss={"output_1": utils.get_loss_fn(cfg, feat_size)}, run_eagerly=True)
+    model.compile(optimizer, loss={"output_1": utils.get_loss_fn(cfg, feat_size)}, metrics={"output_4": utils.accuracy_metric})#, run_eagerly=True)
+
+    # generate train and test datasets
+    generator = UnsupervisedDataGeneratorResNet(x_train, y_train, num_constrains=cfg['training']['num_constrains'], alpha=alpha, q=cfg['training']['q'],
+                        batch_size=cfg['training']['batch_size'], ml=cfg['training']['ml'], feature_extractor=feature_extractor)
+    train_generator = generator.gen()
+
+    generator_2 = DataGenerator(x_test, y_test, batch_size=cfg['training']['batch_size'], feature_extractor=feature_extractor)
+    test_generator = generator_2.gen()
 
     model.fit(train_generator, validation_data=test_generator, steps_per_epoch=int(len(y_train)/cfg['training']['batch_size']), 
               validation_steps=len(y_test)//cfg['training']['batch_size'], epochs=cfg['training']['epochs'], callbacks=callback_list, verbose=2)
-    # TODO: NO VALIDATION RIGHT NOW
-    '''model.fit(train_generator, steps_per_epoch=int(len(y_train)/cfg['training']['batch_size']), 
-             epochs=cfg['training']['epochs'], callbacks=callback_list, verbose=2)'''
+
 
 
     # measure training performance

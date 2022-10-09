@@ -19,7 +19,7 @@ from sklearn.metrics.cluster import adjusted_rand_score
 from ast import literal_eval as make_tuple
 
 import utils
-from dataset import ContrastiveDataGeneratorPretraining
+from dataset import ContrastiveDataGeneratorPretraining, UnsupervisedDataGeneratorResNet, DataGenerator
 from projector_plugin import ProjectorPlugin
 
 from model import ContrastiveAE
@@ -52,69 +52,53 @@ def run_experiment(cfg):
     x_train, x_test, y_train, y_test = utils.get_data(cfg)
 
     # PRETRAINING
+    # if pretrain == False: 
+    #   load from saved model
+    # if pretrain == True:
     X = np.concatenate((x_train, x_test))
     Y = np.concatenate((y_train, y_test))
 
-    generator = ContrastiveDataGeneratorPretraining(X, batch_size=cfg['training']['batch_size'])
+    pre_generator = ContrastiveDataGeneratorPretraining(X, batch_size=cfg['experiment']['pretrain_batch_size'])
 
-    train_generator = generator.gen()
+    pretrain_generator = pre_generator.gen()
 
-    feat_size = (32,32,3) #(96,96,3) or 2048  # both are only valid for stl-10
-    model = ContrastiveAE(cfg['model'], feat_size) 
+    feat_size = (32, 32, 3) # (32,32,3) for cifar10 or (96,96,3) for stl10
+    pretrain_model = ContrastiveAE(cfg['model'], feat_size) 
 
-    optimizer = tf.keras.optimizers.Adam(learning_rate=cfg['training']['learning_rate'], 
-                                         beta_1=cfg['training']['beta_1'],
-                                         beta_2=cfg['training']['beta_2'])
-
+    pretrain_optimizer = tf.keras.optimizers.Adam(learning_rate=cfg['experiment']['lr_pretrain'])
     
     # handle callbacks
     callback_list = []
 
-    if cfg['training']['lrs']:
-        callback_list.append(tf.keras.callbacks.LearningRateScheduler(utils.get_learning_rate_scheduler(cfg)))
+    '''if cfg['training']['lrs']:
+        callback_list.append(tf.keras.callbacks.LearningRateScheduler(utils.get_learning_rate_scheduler(cfg)))'''
 
-    if cfg['experiment']['save_model']:
+    '''if cfg['experiment']['save_model']: # change checkpoint path. rn it is the same with dcgmm
         checkpoint_path = os.path.join(cfg['dir']['checkpoint'], cfg['dataset']['name'], ex_name)
         Path(checkpoint_path).mkdir(parents=True)
         callback_list.append(tf.keras.callbacks.ModelCheckpoint(filepath=checkpoint_path, verbose=0, monitor='cont_loss',
-                                                              save_weights_only=True, save_best_only=True))
+                                                              save_weights_only=True, save_best_only=True))'''
 
 
     # train model
-    model.compile(optimizer)#, loss={"output_1": utils.get_loss_fn(cfg, feat_size)})
+    pretrain_model.compile(pretrain_optimizer, loss={"output_1": utils.get_loss_fn(cfg, feat_size)})
 
-    model.fit(train_generator, steps_per_epoch=int(len(Y)/(cfg['training']['batch_size'])), epochs=cfg['training']['epochs'], callbacks=callback_list, verbose=2)
-    
+    pretrain_model.fit(pretrain_generator, steps_per_epoch=int(len(Y)/(cfg['experiment']['pretrain_batch_size'])), epochs=cfg['experiment']['epochs_pretrain'], callbacks=callback_list, verbose=2)
+
+
     # visualize embeddings
-    encoder = model.encoder
+    encoder = pretrain_model.encoder
     input = tfkl.Input(shape=feat_size)
-    z = encoder(input)
+    z, _ = encoder(input)
     z_model = tf.keras.models.Model(inputs=input, outputs=z)
     z = z_model.predict(X)
     z_test = z_model.predict(x_test)
 
+    
     labels_transformed = np.squeeze(Y)
     labels_transformed_test = np.squeeze(y_test)
     label2class ={'airplane':0, 'automobile':1, 'bird':2, 'cat':3, 'deer':4, 'dog':5, 
-                    'frog':6, 'horse':7, 'ship':8, 'truck':9}
-
-    # both train and test embeddings
-    pca = PCA(n_components=2)
-    z_transformed = pca.fit_transform(z)
-    plt.figure(figsize=(10,10))
-    scatter = plt.scatter(z_transformed[:,0], z_transformed[:,1], c=labels_transformed, cmap='tab10')
-    plt.legend(handles=scatter.legend_elements()[0], labels=label2class)
-    plt_save_path = os.path.join(experiment_path,'embedding_space_pca.png')
-    plt.savefig(plt_save_path)
-
-    # both train and test embeddings
-    tsne = TSNE(n_components=2)
-    z_transformed_tsne = tsne.fit_transform(z)
-    plt.figure(figsize=(10,10))
-    scatter = plt.scatter(z_transformed_tsne[:,0], z_transformed_tsne[:,1], c=labels_transformed, cmap='tab10')
-    plt.legend(handles=scatter.legend_elements()[0], labels=label2class)
-    plt_save_path = os.path.join(experiment_path,'embedding_space_tsne.png')
-    plt.savefig(plt_save_path)
+                    'frog':6, 'horse':7, 'ship':8, 'truck':9} # change this for stl10'''
 
     # only test embeddings (to avoid overcrowding)
     pca = PCA(n_components=2)
@@ -126,13 +110,13 @@ def run_experiment(cfg):
     plt.savefig(plt_save_path)
 
     # only test embeddings (to avoid overcrowding)
-    tsne = TSNE(n_components=2)
+    '''tsne = TSNE(n_components=2)
     z_transformed_tsne = tsne.fit_transform(z_test)
     plt.figure(figsize=(10,10))
     scatter = plt.scatter(z_transformed_tsne[:,0], z_transformed_tsne[:,1], c=labels_transformed_test, cmap='tab10')
     plt.legend(handles=scatter.legend_elements()[0], labels=label2class)
     plt_save_path = os.path.join(experiment_path,'embedding_space_tsne_onlytest.png')
-    plt.savefig(plt_save_path)
+    plt.savefig(plt_save_path)'''
 
     # measure AE performance
     estimator = GaussianMixture(n_components=cfg['model']['num_clusters'], covariance_type='diag', n_init=3)
@@ -143,13 +127,13 @@ def run_experiment(cfg):
     print(f'pretrain accuracy: {pretrain_acc}')
     performance_logger.info(f'yy: {yy}')
     performance_logger.info(f'Y: {Y}')
-
+    
     # visualize for e.g. X[:100]
     temp_X = X[:900]
 
     proj = ProjectorPlugin(experiment_path)
 
-    rec = model.predict(temp_X)
+    rec = pretrain_model.predict(temp_X)
 
     # convert bgr to rgb
     rec = rec[...,::-1]
@@ -159,8 +143,133 @@ def run_experiment(cfg):
     performance_logger.info('finished pretraining')
     print('finished pretraining')
 
-
+    
     # DC-GMM TRAINING
+    generator = DataGenerator(x_train, y_train, num_constrains=cfg['training']['num_constrains'], alpha=alpha, q=cfg['training']['q'],
+                        batch_size=cfg['training']['batch_size'], ml=cfg['training']['ml'])
+
+    train_generator = generator.gen()
+
+    test_generator = DataGenerator(x_test, y_test, batch_size=cfg['training']['batch_size']).gen()
+
+    
+    model = utils.get_model(cfg, feat_size)
+
+    # initializing the dcgmm weights by calling it with an example batch for pretrained weights assignment
+    b = next(train_generator)
+    model(b[0])
+
+    # assign weights to GMM mixtures of DCGMM
+    mu_samples = estimator.means_
+    sigma_samples = estimator.covariances_
+    model.c_mu.assign(mu_samples)
+    model.log_c_sigma.assign(np.log(sigma_samples))
+
+    # assign pretrained encoder and decoder weights to DC-GMM
+    model.get_layer('VGGEncoder').set_weights(pretrain_model.get_layer('VGGEncoder').get_weights())
+    model.get_layer('VGGDecoder').set_weights(pretrain_model.get_layer('VGGDecoder').get_weights())
+
+    performance_logger.info('assigned pretrained parameters to dcgmm model.')
+    print('assigned pretrained parameters to dcgmm model.')
+
+
+    optimizer = tf.keras.optimizers.Adam(learning_rate=cfg['training']['learning_rate'], 
+                                         beta_1=cfg['training']['beta_1'],
+                                         beta_2=cfg['training']['beta_2'])
+
+    # handle callbacks
+    callback_list = []
+
+    if cfg['training']['lrs']:
+        callback_list.append(tf.keras.callbacks.LearningRateScheduler(utils.get_learning_rate_scheduler(cfg)))
+
+    if cfg['experiment']['save_model']:
+        checkpoint_path = os.path.join(cfg['dir']['checkpoint'], cfg['dataset']['name'], ex_name)
+        Path(checkpoint_path).mkdir(parents=True)
+        callback_list.append(tf.keras.callbacks.ModelCheckpoint(filepath=checkpoint_path, verbose=1,save_best_only=True,
+                                                              save_weights_only=True))
+
+    
+    # train model
+    model.compile(optimizer, loss={"output_1": utils.get_loss_fn(cfg, feat_size)}, metrics={"output_4": utils.accuracy_metric})#, run_eagerly=True)
+
+    model.fit(train_generator, validation_data=test_generator, steps_per_epoch=int(len(y_train)/cfg['training']['batch_size']), 
+              validation_steps=len(y_test)//cfg['training']['batch_size'], epochs=cfg['training']['epochs'], callbacks=callback_list, verbose=2)
+
+
+    # measure training performance
+    # commented section is when using resnet for feature extraction
+    '''dataloader = tf.data.Dataset.from_tensor_slices(x_train).batch(128)
+    total_output = []
+    for batch in dataloader:
+        output = feature_extractor(batch, training=False)
+        total_output.append(output)
+    x_train_extracted = tf.concat(total_output,axis=0)
+    rec, z_sample, p_z_c, p_c_z = model.predict([x_train_extracted, np.zeros(len(x_train_extracted))])'''
+
+    rec, z_sample, p_z_c, p_c_z = model.predict([x_train, np.zeros(len(x_train))])
+    yy = np.argmax(p_c_z, axis=-1)
+    performance_logger.info(f'after training dcgmm\ny_train: {y_train}\n yy: {yy}')
+    acc = utils.cluster_acc(y_train, yy)
+    nmi = normalized_mutual_info_score(y_train, yy)
+    ari = adjusted_rand_score(y_train, yy)
+    # sc metric computation
+    '''ml_ind1 = generator.ml_ind1
+    ml_ind2 = generator.ml_ind2
+    cl_ind1 = generator.cl_ind1
+    cl_ind2 = generator.cl_ind2
+    count = 0
+    if cfg['training']['num_constrains'] == 0:
+        sc = 0
+    else:
+        maxx = len(ml_ind1) + len(cl_ind1)
+        for i in range(len(ml_ind1)):
+            if yy[ml_ind1[i]] == yy[ml_ind2[i]]:
+                count += 1
+        for i in range(len(cl_ind1)):
+            if yy[cl_ind1[i]] != yy[cl_ind2[i]]:
+                count += 1
+        sc = count / maxx'''
+
+    '''performance_logger.info("Train Accuracy: %f, NMI: %f, ARI: %f, sc: %f." % (acc, nmi, ari, sc))'''
+    performance_logger.info("Train Accuracy: %f, NMI: %f, ARI: %f" % (acc, nmi, ari))
+
+
+    # measure test performance
+    # commented section is when using resnet for feature extraction
+    '''dataloader = tf.data.Dataset.from_tensor_slices(x_test).batch(128)
+    total_output = []
+    for batch in dataloader:
+        output = feature_extractor(batch, training=False)
+        total_output.append(output)
+    x_test_extracted = tf.concat(total_output,axis=0)
+    rec, z_sample, p_z_c, p_c_z = model.predict([x_test_extracted, np.zeros(len(x_test_extracted))])'''
+    
+    rec, z_sample, p_z_c, p_c_z = model.predict([x_test, np.zeros(len(x_test))])
+    yy = np.argmax(p_c_z, axis=-1)
+    acc = utils.cluster_acc(y_test, yy)
+    nmi = normalized_mutual_info_score(y_test, yy)
+    ari = adjusted_rand_score(y_test, yy)
+
+    performance_logger.info("Test Accuracy: %f, NMI: %f, ARI: %f.\n" % (acc, nmi, ari))
+
+    '''# save test set confusion matrix
+    conf_mat = utils.make_confusion_matrix(y_test, yy, cfg['model']['num_clusters'])
+    np.save(os.path.join(experiment_path,'conf_mat.npy'), conf_mat)
+
+    # save test set embeddings
+    if cfg['experiment']['save_embedding']:
+        proj = ProjectorPlugin(experiment_path, z_sample)
+
+        proj.save_labels(y_test)
+
+        # Add images to projector (INSTEAD OF X_TEST IT SHOULD BE REC)
+        if cfg['dataset']['name'] == 'MNIST':
+            proj.save_image_sprites(x_test, 28, 28, 1, True)
+        elif cfg['dataset']['name'] == 'STL10':
+            proj.save_image_sprites(rec, 96, 96, 3, True)
+
+        proj.finalize()'''
 
     return
 

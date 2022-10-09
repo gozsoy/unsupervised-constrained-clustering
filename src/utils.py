@@ -61,11 +61,10 @@ def get_loss_fn(cfg, inp_shape):
     elif cfg['dataset']['name']== 'CIFAR10':
 
         pixel_count = tf.cast(tf.reduce_prod(inp_shape), dtype=tf.float32)
-        #pixel_count = inp_shape only valid for pretrained resnet
 
         def loss_fn(y_true, x_decoded_mean):
             
-            loss = 0.0 * pixel_count * BinaryCrossentropy()(y_true, x_decoded_mean)
+            loss = 1e-3 * pixel_count * BinaryCrossentropy()(y_true, x_decoded_mean)
             return loss
         
         return loss_fn
@@ -73,9 +72,10 @@ def get_loss_fn(cfg, inp_shape):
     elif cfg['dataset']['name'] == 'STL10':
         
         pixel_count = tf.cast(tf.reduce_prod(inp_shape), dtype=tf.float32)
+        #pixel_count = inp_shape #only valid for pretrained resnet
 
         def loss_fn(y_true, x_decoded_mean):
-            loss = pixel_count * BinaryCrossentropy()(y_true, x_decoded_mean)
+            loss = pixel_count * MeanSquaredError()(y_true, x_decoded_mean)
             return loss
         
         return loss_fn
@@ -100,6 +100,9 @@ def get_data(cfg, stl_pretrained=False):
 
         x_train = x_train / 255.
         x_test = x_test / 255.
+
+        y_train = np.squeeze(y_train)
+        y_test = np.squeeze(y_test)
 
 
     elif stl_pretrained:
@@ -141,9 +144,9 @@ def get_data(cfg, stl_pretrained=False):
         y_train = y_train - 1
         y_test = y_test - 1
 
-        # [0,255] -> [0,1] ADDED FOR RESNET VAE. comment out for pretrained resnet
-        x_train = x_train / 255.
-        x_test = x_test / 255.
+        # [0,255] -> [0,1] ADDED FOR RESNET VAE. comment them for pretrained resnet
+        #x_train = x_train / 255.
+        #x_test = x_test / 255.
 
     else:
         raise NotImplementedError()

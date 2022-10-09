@@ -1,0 +1,49 @@
+# experiment settings
+experiment:
+  name: 1oct_contrec_full_vgg7layers_beta1e3_latent10_batch128_tanhvarcap_2 # experiment name, if null experiment date used, default null
+  runs: 1   # number of runs, the results will be averaged, default 1
+  pretrain: True   # True -> pretrain the autoencoder, False -> use pretrained weights, default: False
+  epochs_pretrain: 10   # number of pre-training epochs, default 10
+  pretrain_batch_size: 128 # batch size for contrastive learning task
+  lr_pretrain: 0.001   # learning rate for pretraning, default 0.001
+  save_model: False   # save trained model, default False
+  save_embedding: False   # save test set embeddings for later analysis, default False
+  seed: 42
+
+# dataset
+dataset:
+  name: CIFAR10   # CIFAR10, MNIST, STL10
+
+# directories
+dir:
+  data: null   # dataset dir, if noname tf datasets used, default noname
+  checkpoint: /cluster/scratch/goezsoy/dcgmm_checkpoints
+  logging: ../logs
+  pretrain: ../pretrain
+
+
+# training settings
+training:
+  epochs: 10   #  number of epochs, default 500
+  num_constrains: 6000   # number of constrains, default 6000
+  batch_size: 128   # batch size, default 128
+  alpha: 10000.   # weight importance of the constraints (higher alpha, higher confidence), default 10000
+  q: 0   # flip probability of the labels, default 0
+  learning_rate: 0.001   # learning rate, default 0.001
+  beta_1: 0.9   # beta_1 argument of Adam optimizer, default 0.9
+  beta_2: 0.999   # beta_2 argument of Adam optimizer, default 0.999
+  ml: 0   # 0: random choice, 1: only must-link, -1: only cannot-link, default 0
+  decay_rate: 0.9   # learning rate decay rate, default: 0.9 -> lr_decay_rate
+  epochs_lr: 20   # learning rate decay period in terms of epochs, default 20 -> lr_drop_period
+  lrs: True   # use learning rate scheduling, default: True -> use_lr_scheduling
+  
+
+
+# architecture settings
+model:
+  latent_dim: 10 # for resnet change this manually -todo-
+  num_clusters: 10   # total number of labels
+  activation: "sigmoid"   # null, "sigmoid"
+  type: "VGG"   # 'FC', 'VGG', 'ResNet', 'CNN'
+  is_unsupervised: False   # if True, do not use loss_2a_c which is about constraints, default : False
+

@@ -233,13 +233,13 @@ class DataGenerator():
             for index in range(int(len(self.X)/ self.batch_size)):
                 indexes = self.indexes[index * self.batch_size:(index + 1) * self.batch_size]
                 X = tf.gather(self.X,indexes)
-                #X = self.extract_image_features(X) # added for stl10
+                #X = self.extract_image_features(X) # added for stl10 pretrained resnet
                 Y = self.Y[indexes]
                 W = self.W[indexes][:, indexes]* self.alpha
                 ind1, ind2 = csr_matrix_indices(W)
                 data = W.data
                 
-                yield (X, (ind1, ind2, data)), {"output_1": X}#, "output_4": Y}
+                yield (X, (ind1, ind2, data)), {"output_1": X, "output_4": Y}
             for index in range(self.num_constrains// self.batch_size):
                 indexes = self.ind_constr[index * self.batch_size//2:(index + 1) * self.batch_size//2]
                 indexes = np.concatenate([self.ind1[indexes], self.ind2[indexes]])
@@ -247,13 +247,13 @@ class DataGenerator():
 
                 np.random.shuffle(indexes)
                 X = tf.gather(self.X,indexes)
-                #X = self.extract_image_features(X) # added for stl10
+                #X = self.extract_image_features(X) # added for stl10 pretrained resnet
                 Y = self.Y[indexes]
                 W = self.W[indexes][:, indexes]* self.alpha
                 ind1, ind2 = csr_matrix_indices(W)
                 data = W.data
                 #W = W.toarray()
-                yield (X, (ind1,ind2, data)), {"output_1": X}#, "output_4": Y}
+                yield (X, (ind1,ind2, data)), {"output_1": X, "output_4": Y}
 
 
 class ContrastiveDataGenerator():
@@ -974,9 +974,16 @@ class UnsupervisedDataGeneratorResNet():
 
     def get_transformation_pipeline(self):
         
-        transformation = tf.keras.Sequential([   
+        '''transformation = tf.keras.Sequential([   
                 tf.keras.layers.experimental.preprocessing.RandomCrop(height=72, width=72),
                 tf.keras.layers.experimental.preprocessing.Resizing(height=96, width=96),
+                tf.keras.layers.experimental.preprocessing.RandomFlip(mode='horizontal'),
+                tf.keras.layers.experimental.preprocessing.RandomContrast(factor=0.4)
+            ])'''
+
+        transformation = tf.keras.Sequential([   
+                tf.keras.layers.experimental.preprocessing.RandomCrop(height=24, width=24),
+                tf.keras.layers.experimental.preprocessing.Resizing(height=32, width=32),
                 tf.keras.layers.experimental.preprocessing.RandomFlip(mode='horizontal'),
                 tf.keras.layers.experimental.preprocessing.RandomContrast(factor=0.4)
             ])
@@ -1164,7 +1171,7 @@ class UnsupervisedDataGeneratorResNet():
                 ind2 = np.array([],dtype=np.int32)
                 data = np.array([],dtype=np.float64)
                 
-                yield (X, (ind1, ind2, data)), {"output_1": X}#, "output_4": Y}
+                yield (X, (ind1, ind2, data)), {"output_1": X, "output_4": Y}
 
             for index in range(self.num_constrains// self.batch_size):
                 indexes = self.ind_constr[index * self.batch_size//2:(index + 1) * self.batch_size//2]
@@ -1210,7 +1217,7 @@ class UnsupervisedDataGeneratorResNet():
                 ind2 = np.append(ind2, np.arange(self.batch_size, self.batch_size + ml_link_per_batch))
                 data = np.append(data, np.array([self.alpha] * ml_link_per_batch))
 
-                yield (X, (ind1,ind2, data)), {"output_1": X}#, "output_4": Y}
+                yield (X, (ind1,ind2, data)), {"output_1": X, "output_4": Y}
 
 
 

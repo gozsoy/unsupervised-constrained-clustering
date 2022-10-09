@@ -438,10 +438,14 @@ class VGGDeConvBlockAUX(layers.Layer):
 class VGGEncoder(layers.Layer):
     def __init__(self, encoded_size):
         super(VGGEncoder, self).__init__(name='VGGEncoder')
-        #self.layers = [VGGConvBlockAUX(32, 1), VGGConvBlockAUX(64, 2), VGGConvBlock(128, 3),VGGConvBlockAUX(128, 4),
-        #              VGGConvBlock(256, 5),VGGConvBlockAUX(256, 6)]
-        self.layers = [VGGConvBlock(128, 1),
-                      VGGConvBlock(256, 2)]
+        #self.layers = [VGGConvBlock(32, 1), VGGConvBlock(64, 2)] 
+        '''self.layers = [VGGConvBlockAUX(32, 1), VGGConvBlockAUX(64, 2), VGGConvBlock(128, 3),VGGConvBlockAUX(128, 4),
+                      VGGConvBlock(256, 5),VGGConvBlockAUX(256, 6)]'''
+        '''self.layers = [VGGConvBlockAUX(32, 1), VGGConvBlockAUX(32, 2), VGGConvBlock(64, 3),VGGConvBlockAUX(64, 4),
+                      VGGConvBlock(128, 5),VGGConvBlockAUX(64, 6)]'''
+        self.layers = [VGGConvBlockAUX(32, 1), VGGConvBlockAUX(64, 2), VGGConvBlock(128, 3),VGGConvBlockAUX(128, 4),
+                      VGGConvBlock(256, 5),VGGConvBlockAUX(256, 6),VGGConvBlockAUX(128, 7)]
+        
 
         self.mu = tfkl.Dense(encoded_size, activation=None)
         self.sigma = tfkl.Dense(encoded_size, activation=None)
@@ -472,21 +476,27 @@ class VGGDecoder(layers.Layer):
         elif input_tuple == (64, 64, 3):
             target_shape = (13, 13, 64)
         elif input_tuple == (32, 32, 3):  # compatible with cifar10
-            target_shape = (5, 5, 256)
+            target_shape = (5, 5, 128)
         elif input_tuple == (96, 96, 3): # compatible with stl10
-            target_shape = (21, 21, 256)
+            target_shape = (21, 21, 64)
 
         self.activation = activation
         self.dense = tfkl.Dense(target_shape[0] * target_shape[1] * target_shape[2])
         self.reshape = tfkl.Reshape(target_shape=target_shape)
+        #self.layers = [VGGDeConvBlock(64, 1),VGGDeConvBlock(32, 2)]
         '''self.layers = [VGGDeConvBlock(256, 1),VGGDeConvBlockAUX(256, 2),
                        VGGDeConvBlock(128, 3),VGGDeConvBlockAUX(128, 4),
-                       VGGDeConvBlockAUX(64, 5),VGGDeConvBlockAUX(32, 6)]s128, 3),VGGDeConvBlockAUX(128, 4),
                        VGGDeConvBlockAUX(64, 5),VGGDeConvBlockAUX(32, 6)]'''
-        self.layers = [VGGDeConvBlock(256, 1),
-                       VGGDeConvBlock(128, 2)]            
+        '''self.layers = [VGGDeConvBlockAUX(64, 1),
+                       VGGDeConvBlock(128, 2),VGGDeConvBlockAUX(64, 3),
+                       VGGDeConvBlock(64, 4), VGGDeConvBlockAUX(32, 5),VGGDeConvBlockAUX(32, 6)]'''
+        self.layers = [VGGDeConvBlockAUX(128, 1),
+                       VGGDeConvBlockAUX(256, 2),VGGDeConvBlock(256, 3),
+                       VGGDeConvBlockAUX(128, 4),VGGDeConvBlock(128, 5),
+                       VGGDeConvBlockAUX(64, 6),VGGDeConvBlockAUX(32, 7)]
+        
         self.convT = tfkl.Conv2DTranspose(filters=input_tuple[2], kernel_size=3, padding='same')
-        #self.convT2 = tfkl.Conv2DTranspose(filters=input_tuple[2], kernel_size=3, padding='valid')
+
 
     def call(self, inputs):
         out = self.dense(inputs)
@@ -669,7 +679,7 @@ class DCGMM(tf.keras.Model):
             raise NotImplemented("Invalid type {}".format(self.type))
 
         self.c_mu = tf.Variable(tf.ones([self.num_clusters, self.encoded_size]), name="mu")
-        self.log_c_sigma = tf.Variable(tf.ones([self.num_clusters, self.encoded_size]), name="sigma")
+        self.log_c_sigma = tf.Variable(tf.ones([self.num_clusters, self.encoded_size]), name="sigma") # works better when tf.zeros
         self.prior = tf.constant(tf.ones([self.num_clusters]) * (
                 1 / self.num_clusters))  # tf.Variable(tf.ones([self.num_clusters]), name="prior")
 
@@ -678,13 +688,14 @@ class DCGMM(tf.keras.Model):
         z_mu, log_z_sigma = self.encoder(inputs)
 
         # possible improvements for nan loss
-        #log_z_sigma = tfk.activations.tanh(log_z_sigma) # clipping excessive variance values
+        log_z_sigma = tfk.activations.tanh(log_z_sigma) # clipping excessive variance values
         #log_z_sigma = tf.zeros_like(log_z_sigma, dtype=tf.float32) # unit variance
+        #log_z_sigma = tfp.math.clip_by_value_preserve_gradient(log_z_sigma, -10.0, 10.0)
         
-        print('---')
+        #print('---')
         #print(f'self.c_mu: {self.c_mu}')
         #print(f'self.log_c_sigma: {self.log_c_sigma}')
-        print(f'log_z_sigma: {log_z_sigma}')
+        #print(f'log_z_sigma: {log_z_sigma}')
 
         
         z=tfd.MultivariateNormalDiag(loc=z_mu, scale_diag=tf.math.sqrt(tf.math.exp(log_z_sigma)))
@@ -783,7 +794,6 @@ class DCGMM(tf.keras.Model):
         return dec, z_sample, p_z_c, p_c_z
 
 
-
 # BELOW ARE ADDED FOR CONTRASTIVE PRETRAINING
 
 # only used in pretraining - not final product
@@ -821,7 +831,7 @@ class VGGDecoderAE(layers.Layer):
         elif input_tuple == (32, 32, 3):  # compatible with cifar10
             target_shape = (5, 5, 128)
         elif input_tuple == (96, 96, 3): # compatible with stl10
-            target_shape = (21, 21, 256)
+            target_shape = (21, 21, 128)
 
         self.activation = activation
         self.dense = tfkl.Dense(target_shape[0] * target_shape[1] * target_shape[2])
@@ -884,8 +894,10 @@ class ContrastiveAE(tf.keras.Model):
             self.encoder = Encoder(self.encoded_size)
             self.decoder = Decoder(self.inp_shape, self.activation)
         elif self.type == "VGG":
-            self.encoder = VGGEncoderAE(self.encoded_size)
+            #self.encoder = VGGEncoderAE(self.encoded_size)
             #self.decoder = VGGDecoderAE(self.inp_shape, self.activation)
+            self.encoder = VGGEncoder(self.encoded_size)
+            self.decoder = VGGDecoder(self.inp_shape, self.activation)
         else:
             raise NotImplemented("Invalid type {}".format(self.type))
 
@@ -896,12 +908,12 @@ class ContrastiveAE(tf.keras.Model):
         
         batch_size = int(len(inputs)/2)
 
-        z_mu = self.encoder(inputs)
+        z_mu,_ = self.encoder(inputs)
 
-        z_mu = self.dense2(self.dense1(z_mu))
+        z_proj = self.dense2(self.dense1(z_mu))
 
         # compute contrastive batch loss
-        sim_matrix = compute_pairwise_sim(z_mu)
+        sim_matrix = compute_pairwise_sim(z_proj)
 
         index_vector = tf.range(len(sim_matrix))
         loss_matrix = tf.vectorized_map(compute_pairwise_loss,(sim_matrix, index_vector))
@@ -915,7 +927,7 @@ class ContrastiveAE(tf.keras.Model):
         self.add_loss(cont_loss)
         self.add_metric(cont_loss, name='cont_loss')
 
-        #dec = self.decoder(z_mu)
+        dec = self.decoder(z_mu)
 
         # same as {'output_1':dec}
-        return
+        return dec
