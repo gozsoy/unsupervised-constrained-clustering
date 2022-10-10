@@ -1,53 +1,54 @@
-# Deep Conditional Gaussian Mixture Model for Constrained Clustering.
+# Unsupervised Constrained Clustering with Contrastive Learning
 
-This repository holds the official code for the paper Deep Conditional Gaussian Mixture Model for Constrained Clustering [(link to paper)](https://arxiv.org/abs/2106.06385), accepted at NeurIPS 2021.
+This project is built on DC-GMM idea, hence borrows code from https://github.com/lauramanduchi/DC-GMM.
 
 ## Motivation
 
-Clustering with constraints has gained significant attention in the field of constrained machine learning as it can leverage partial prior information on a growing amount of unlabelled data. 
-Following recent advances in deep generative models, we derive a novel probabilistic approach to constrained clustering that can be trained efficiently in the framework of stochastic gradient variational Bayes. 
-In contrast to existing approaches, our model (DC-GMM) uncovers the underlying distribution of the data conditioned on prior clustering preferences, expressed as \textit{pairwise constraints}. The inclusion of such constraints allows the user to drive the clustering process towards a desirable configuration by indicating which samples should or should not belong to the same class.
+In this project, we work on making DC-GMM fully unsupervised, which can automatically understand similarity notions hidden in the given dataset without any external help. The preceding VaDE paper, which is a special case of DC-GMM without any constraints is also fully unsupervised. However, our method differs from it by having constraints as in DC-GMM, but generating them in a self-supervised way using contrastive learning.
 
 ## Data Download
 
-To download Reuters data, run the following:
+Download STL data (Matlab files) from https://cs.stanford.edu/~acoates/stl10/. Change line 106 of utils.py to the save directory.
 
-`cd dataset/reuters`
 
-`sh download_data.sh`
+## Reproducing results on ETH Euler cluster
 
-Download STL data (Matlab files) from https://cs.stanford.edu/~acoates/stl10/. Save them in `dataset/stl10/stl10_matlab`. Then run the following:
+## Install Miniconda
 
-`cd dataset/stl10`
+```
+wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
+chmod +x Miniconda3-latest-Linux-x86_64.sh
+./Miniconda3-latest-Linux-x86_64.sh
+```
 
-`python compute_stl_features.py`
+Close the current terminal and open a new one.
 
-To download and configure the UTKFace datset:
-- Download the cropped and aligned dataset archive from https://susanqq.github.io/UTKFace/
-- Extract the images from this archive to `<code root>/dataset/utkface`
+## Setup Conda Environment, Load Modules, Activate Conda Environment
 
-## Implementation
+```
+conda env create -f environment.yml
+module load gcc/6.3.0 cuda/10.1.243 cudnn/7.6.4 python_gpu/3.8.5 eth_proxy
+conda activate semester_project_env
+```
 
-To run DC-GMM using the default setting on MNIST data set:
+## Run Tasks (please refer to report)
+First
+```
+cd src/
+```
 
-`python main.py`
+For task 1, change experiment settings from config_task1.yml. Then
+```
+bsub -n 4 -W 23:59 -o euler_message -R "rusage[mem=4096, ngpus_excl_p=1]" -R "select[gpu_model0==NVIDIAGeForceRTX2080Ti]" python main.py --config ../config_task1.yml
+```
 
-To run DC-GMM without pairwise constraints using the default setting:
+For task 2, change experiment settings from config_task2.yml. Then
+```
+bsub -n 4 -W 23:59 -o euler_message -R "rusage[mem=4096, ngpus_excl_p=1]" -R "select[gpu_model0==NVIDIAGeForceRTX2080Ti]" python main.py --config ../config_task2.yml
+```
 
-`python main.py --num_constrains 0`
+For task 3, change experiment settings from config_task3.yml. Then
+```
+bsub -n 4 -W 23:59 -o euler_message -R "rusage[mem=4096, ngpus_excl_p=1]" -R "select[gpu_model0==NVIDIAGeForceRTX2080Ti]" python main_contrastive.py --config ../config_task3.yml
+```
 
-To choose different configurations of the hyper-parameters:
-
-`python main.py --data ... num_constrains ... --alpha ... --lr ...`
-
-Important hyper-parameters:
-- data: choose from MNIST, fMNIST, Reuters, har, utkface
-- num_constrains: by default it should be set to 6000 (note that the total number of pairwise constraints in a dataset is O(N*N))
-- alpha: measure the confidence in your labels (default is 10000)
-- pretrain: False if you want to use your own pretrain weights
-
-### Pairwise constraints 
-
-In the current implementation, the pairwise constraints are obtained from labels by randomly sampled two data points and assigning a must-link constraint (+1) if the two samples have the same label and a cannot-link constraint (-1) otherwise. The pairwise constraints are stored in a matrix W.
-See the file:
-`source/data.py`
