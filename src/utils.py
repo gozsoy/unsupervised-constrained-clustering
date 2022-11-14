@@ -48,31 +48,22 @@ def load_config(args):
 def get_loss_fn(cfg, inp_shape):
     # return function of the form loss = fn(y_true, y_pred)
 
-    if cfg['dataset']['name'] == 'MNIST':
-        
-        pixel_count = tf.cast(inp_shape[0], dtype=tf.float32)
-
-        def loss_fn(y_true, x_decoded_mean):
-            loss = pixel_count * BinaryCrossentropy()(y_true, x_decoded_mean)
-            return loss
-        
-        return loss_fn
     
-    elif cfg['dataset']['name']== 'CIFAR10':
+    if cfg['dataset']['name']== 'CIFAR10':
 
         pixel_count = tf.cast(tf.reduce_prod(inp_shape), dtype=tf.float32)
+        beta = 1. # 1e-3 for task 3
 
         def loss_fn(y_true, x_decoded_mean):
             
-            loss = 1e-3 * pixel_count * BinaryCrossentropy()(y_true, x_decoded_mean)
+            loss = beta * pixel_count * BinaryCrossentropy()(y_true, x_decoded_mean)
             return loss
         
         return loss_fn
     
-    elif cfg['dataset']['name'] == 'STL10':
+    elif cfg['dataset']['name'] == 'STL10' and cfg['model']['type'] == 'FC': # task 1
         
         pixel_count = tf.cast(tf.reduce_prod(inp_shape), dtype=tf.float32)
-        #pixel_count = inp_shape #only valid for pretrained resnet
 
         def loss_fn(y_true, x_decoded_mean):
             loss = pixel_count * MeanSquaredError()(y_true, x_decoded_mean)
@@ -80,19 +71,23 @@ def get_loss_fn(cfg, inp_shape):
         
         return loss_fn
     
+    elif cfg['dataset']['name'] == 'STL10' and cfg['model']['type'] == 'VGG': # task 2
+        
+        pixel_count = tf.cast(tf.reduce_prod(inp_shape), dtype=tf.float32)
+
+        def loss_fn(y_true, x_decoded_mean):
+            loss = pixel_count * BinaryCrossentropy()(y_true, x_decoded_mean)
+            return loss
+        
+        return loss_fn
+
     else:
         raise NotImplementedError()
 
 
-def get_data(cfg, stl_pretrained=False):
-    if cfg['dataset']['name'] == 'MNIST':
-        (x_train, y_train), (x_test, y_test) = tf.keras.datasets.mnist.load_data()
-        x_train = x_train / 255.
-        x_train = np.reshape(x_train, (-1, 28 * 28))
-        x_test = x_test / 255.
-        x_test = np.reshape(x_test, (-1, 28 * 28))
+def get_data(cfg):
 
-    elif cfg['dataset']['name'] == 'CIFAR10':
+    if cfg['dataset']['name'] == 'CIFAR10':
         (x_train, y_train), (x_test, y_test) = tf.keras.datasets.cifar10.load_data()
 
         x_train = x_train.astype('float32')
@@ -104,17 +99,12 @@ def get_data(cfg, stl_pretrained=False):
         y_train = np.squeeze(y_train)
         y_test = np.squeeze(y_test)
 
-
-    elif stl_pretrained:
-        X = np.load("../dataset/stl10/stl_features.npy")
-        X = X.astype('float32')
-        y = np.load("../dataset/stl10/stl_label.npy")
-        y = y.astype('int32')
-        x_train, x_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=3)
     
     elif cfg['dataset']['name'] == 'STL10':
 
+        # change below path with the path you store stl-10 dataset
         path = '/cluster/scratch/goezsoy/contrastive_dcgmm_datasets/stl10_matlab/'
+
         data=scio.loadmat(path+'train.mat')
         x_train = data['X']
         y_train = data['y'].squeeze()
@@ -133,20 +123,21 @@ def get_data(cfg, stl_pretrained=False):
 
         x_train = np.reshape(x_train,(-1,3,96,96))
         x_train = np.transpose(x_train,(0,1,3,2))
-        x_train = np.transpose(x_train,(0,2,3,1)).astype('float32') # added astype newly
+        x_train = np.transpose(x_train,(0,2,3,1)).astype('float32')
     
 
         x_test = np.reshape(x_test,(-1,3,96,96))
         x_test = np.transpose(x_test,(0,1,3,2))
-        x_test = np.transpose(x_test,(0,2,3,1)).astype('float32') # added astype newly
+        x_test = np.transpose(x_test,(0,2,3,1)).astype('float32')
 
 
         y_train = y_train - 1
         y_test = y_test - 1
 
-        # [0,255] -> [0,1] ADDED FOR RESNET VAE. comment them for pretrained resnet
-        #x_train = x_train / 255.
-        #x_test = x_test / 255.
+        # [0,255] -> [0,1] if task 2. Tensorflow resnet-50 preprocess_input() accepts [0,255] int range.
+        if cfg['model']['type'] != 'FC': # task 2
+            x_train = x_train / 255.
+            x_test = x_test / 255.
 
     else:
         raise NotImplementedError()
@@ -159,7 +150,6 @@ def get_model(cfg, inp_shape):
     return DCGMM(cfg['model'], inp_shape)
 
 
-# NOT USED FOR RESNET VAE ACTUALLY
 def get_feature_extractor(inp_shape):
 
     inputs = tf.keras.layers.Input(inp_shape, dtype = tf.uint8)
@@ -168,13 +158,6 @@ def get_feature_extractor(inp_shape):
     outputs = tf.keras.applications.ResNet50(include_top=False, weights='imagenet', pooling='avg')(x)
     feature_extractor = tf.keras.Model(inputs=inputs, outputs=outputs)
     
-    '''device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-    #print(f'resnet is on device: {device}')
-
-    res50_model = torchvision.models.resnet50(pretrained=True)
-    res50_conv = nn.Sequential(*list(res50_model.children())[:-2])
-    res50_conv.eval()
-    res50_conv = res50_conv#.to(device)'''
     return feature_extractor
 
 
@@ -217,27 +200,6 @@ def get_logger(experiment_path, ex_name):
     performance_logger.addHandler(perf_file_handler)
 
     return performance_logger
-
-
-'''# below is not used anywhere
-def setup_logger(results_path, create_stdlog):
-    """Setup a general logger which saves all logs in the experiment folder"""
-
-    f_format = logging.Formatter(
-        '%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-    f_handler = logging.FileHandler(str(results_path))
-    f_handler.setLevel(logging.DEBUG)
-    f_handler.setFormatter(f_format)
-
-    root_logger = logging.getLogger(ROOT_LOGGER_STR)
-    root_logger.handlers = []
-    root_logger.setLevel(logging.DEBUG)
-    root_logger.addHandler(f_handler)
-
-    if create_stdlog:
-        handler = logging.StreamHandler(sys.stdout)
-        handler.setLevel(logging.INFO)
-        root_logger.addHandler(handler)'''
 
 
 def cluster_acc(y_true, y_pred):

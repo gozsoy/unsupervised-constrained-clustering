@@ -1,30 +1,24 @@
 # experiment settings
 experiment:
-  name: 1oct_contrec_full_vgg7layers_beta1e3_latent10_batch128_tanhvarcap_2 # experiment name, if null experiment date used, default null
-  runs: 1   # number of runs, the results will be averaged, default 1
-  pretrain: True   # True -> pretrain the autoencoder, False -> use pretrained weights, default: False
-  epochs_pretrain: 10   # number of pre-training epochs, default 10
+  name: 10oct_task3_TEST1 # experiment name, if null experiment date used, default null
+  epochs_pretrain: 30   # number of pre-training epochs, default 10
   pretrain_batch_size: 128 # batch size for contrastive learning task
   lr_pretrain: 0.001   # learning rate for pretraning, default 0.001
-  save_model: False   # save trained model, default False
   save_embedding: False   # save test set embeddings for later analysis, default False
   seed: 42
 
 # dataset
 dataset:
-  name: CIFAR10   # CIFAR10, MNIST, STL10
+  name: CIFAR10   # CIFAR10 for Task 3
 
 # directories
 dir:
-  data: null   # dataset dir, if noname tf datasets used, default noname
-  checkpoint: /cluster/scratch/goezsoy/dcgmm_checkpoints
   logging: ../logs
-  pretrain: ../pretrain
 
 
 # training settings
 training:
-  epochs: 10   #  number of epochs, default 500
+  epochs: 5   #  number of epochs, default 500
   num_constrains: 6000   # number of constrains, default 6000
   batch_size: 128   # batch size, default 128
   alpha: 10000.   # weight importance of the constraints (higher alpha, higher confidence), default 10000
@@ -41,9 +35,9 @@ training:
 
 # architecture settings
 model:
-  latent_dim: 10 # for resnet change this manually -todo-
+  latent_dim: 10
   num_clusters: 10   # total number of labels
-  activation: "sigmoid"   # null, "sigmoid"
-  type: "VGG"   # 'FC', 'VGG', 'ResNet', 'CNN'
-  is_unsupervised: False   # if True, do not use loss_2a_c which is about constraints, default : False
+  activation: "sigmoid"   # "sigmoid" for Task 3
+  type: "VGG"   # "VGG" for task 3.
+  vade: False   # if True, do not use loss_2a_c which is about constraints, default : False
 
